@@ -1,0 +1,20 @@
+# Web Framework
+Flask>=3.0.0
+Werkzeug>=3.0.0
+
+# Computer Vision & QR Processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+qrcode>=7.4.2
+
+# Machine Learning & Data Processing
+scikit-learn>=1.3.0
+numpy>=1.24.0
+pandas>=2.0.0
+joblib>=1.3.0
+
+# Network & URL Parsing
+requests>=2.31.0
+tldextract>=5.1.0
+beautifulsoup4>=4.12.0
+urllib3>=2.0.0

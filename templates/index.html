@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR 피싱 탐지 및 URL 위험도 분석 시스템</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            --safe-color: #10b981;
+            --safe-bg: rgba(16, 185, 129, 0.12);
+            --warn-color: #f59e0b;
+            --warn-bg: rgba(245, 158, 11, 0.12);
+            --danger-color: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.12);
+            --bg-color: #0b0f19;
+            --card-bg: rgba(18, 24, 38, 0.85);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.18) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.25rem;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #a5b4fc, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 1.25rem;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .dropzone {
+            border: 2px dashed rgba(165, 180, 252, 0.35);
+            background: rgba(30, 41, 59, 0.4);
+            border-radius: 1rem;
+            padding: 2.5rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+        }
+
+        .dropzone:hover, .dropzone.dragover {
+            border-color: #818cf8;
+            background: rgba(79, 70, 229, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .dropzone-icon {
+            font-size: 3rem;
+            color: #818cf8;
+            margin-bottom: 0.75rem;
+            display: inline-block;
+            transition: transform 0.25s ease;
+        }
+
+        .dropzone:hover .dropzone-icon {
+            transform: scale(1.1);
+        }
+
+        .preview-container {
+            max-width: 200px;
+            margin: 1rem auto 0 auto;
+            display: none;
+            position: relative;
+        }
+
+        .preview-img {
+            width: 100%;
+            height: auto;
+            border-radius: 0.75rem;
+            border: 2px solid var(--card-border);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-analyze {
+            background: var(--primary-gradient);
+            border: none;
+            color: #ffffff;
+            font-weight: 600;
+            padding: 0.85rem 1.75rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.5);
+            transition: all 0.25s ease;
+        }
+
+        .btn-analyze:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(79, 70, 229, 0.7);
+            color: #ffffff;
+        }
+
+        .result-badge {
+            font-size: 1.1rem;
+            padding: 0.5rem 1.25rem;
+            border-radius: 2rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .badge-safe {
+            background: var(--safe-bg);
+            color: var(--safe-color);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-warn {
+            background: var(--warn-bg);
+            color: var(--warn-color);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-danger {
+            background: var(--danger-bg);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .url-box {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--card-border);
+            padding: 0.85rem 1rem;
+            border-radius: 0.75rem;
+            word-break: break-all;
+            color: #38bdf8;
+            font-size: 0.95rem;
+        }
+
+        .score-gauge {
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .metric-card {
+            background: rgba(30, 41, 59, 0.4);
+            border: 1px solid var(--card-border);
+            border-radius: 0.85rem;
+            padding: 1rem;
+        }
+
+        .detail-item {
+            background: rgba(30, 41, 59, 0.4);
+            border-left: 3px solid #818cf8;
+            border-radius: 0.5rem;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.65rem;
+            font-size: 0.925rem;
+        }
+
+        .detail-item.danger-detail {
+            border-left-color: var(--danger-color);
+        }
+
+        .detail-item.safe-detail {
+            border-left-color: var(--safe-color);
+        }
+
+        .nav-tabs-custom .nav-link {
+            color: var(--text-muted);
+            border: none;
+            border-bottom: 2px solid transparent;
+            font-weight: 600;
+            padding: 0.75rem 1.25rem;
+        }
+
+        .nav-tabs-custom .nav-link.active {
+            color: #818cf8;
+            background: transparent;
+            border-bottom-color: #818cf8;
+        }
+
+        .table-dark-custom {
+            --bs-table-bg: transparent;
+            --bs-table-color: var(--text-main);
+            border-color: var(--card-border);
+            font-size: 0.9rem;
+        }
+
+        .table-dark-custom th {
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        footer {
+            margin-top: auto;
+            border-top: 1px solid var(--card-border);
+            padding: 1.5rem 0;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <nav class="navbar navbar-expand-lg border-bottom border-dark py-3">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+                <i class="bi bi-qr-code-scan text-primary fs-4"></i>
+                <span>QR Phishing Guard</span>
+            </a>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-dark border border-secondary text-light px-3 py-2 rounded-pill">
+                    <i class="bi bi-shield-check text-success me-1"></i> 캡스톤 디자인 2
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container my-5">
+        <!-- Toast / Alert Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, msg in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show glass-card mb-4" role="alert">
+                        <i class="bi bi-info-circle-fill me-2"></i> {{ msg }}
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Hero Section -->
+        <div class="text-center mb-5">
+            <h1 class="display-5 fw-bold mb-3">QR 피싱(Qshing) 정밀 분석 시스템</h1>
+            <p class="text-secondary fs-5 mx-auto" style="max-width: 650px;">
+                OpenCV 영상 인식과 17가지 휴리스틱 특징, 머신러닝(RandomForest) 모델을 결합하여
+                QR 코드 내 악성 URL 및 피싱 사기 위협을 사전에 탐지합니다.
+            </p>
+        </div>
+
+        <div class="row g-4">
+            <!-- Left Column: Input Form (QR Upload or Direct URL) -->
+            <div class="col-lg-6">
+                <div class="glass-card p-4 h-100">
+                    <ul class="nav nav-tabs nav-tabs-custom mb-4" id="analysisTab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="qr-tab" data-bs-toggle="tab" data-bs-target="#qr-pane" type="button" role="tab">
+                                <i class="bi bi-qr-code me-1"></i> QR 이미지 업로드
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="url-tab" data-bs-toggle="tab" data-bs-target="#url-pane" type="button" role="tab">
+                                <i class="bi bi-link-45deg me-1"></i> URL 직접 검사
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content" id="analysisTabContent">
+                        <!-- QR Image Upload Tab -->
+                        <div class="tab-pane fade show active" id="qr-pane" role="tabpanel">
+                            <form method="POST" action="/" enctype="multipart/form-data" id="qrForm">
+                                <input type="hidden" name="analysis_mode" value="qr">
+                                
+                                <div class="dropzone" id="dropzone">
+                                    <i class="bi bi-cloud-arrow-up dropzone-icon"></i>
+                                    <h5 class="fw-semibold mb-2">QR 이미지를 드래그하거나 클릭하여 업로드</h5>
+                                    <p class="text-secondary small mb-0">지원 형식: PNG, JPG, JPEG, WEBP, BMP (최대 16MB)</p>
+                                    <input type="file" name="qr_file" id="qrFileInput" accept="image/*" class="d-none" required>
+
+                                    <div class="preview-container" id="previewContainer">
+                                        <img src="" alt="QR Preview" id="previewImage" class="preview-img">
+                                        <button type="button" class="btn btn-sm btn-dark position-absolute top-0 end-0 m-1 rounded-circle p-1" id="btnRemoveImage" title="이미지 취소">
+                                            <i class="bi bi-x fs-6"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 text-center">
+                                    <button type="submit" class="btn btn-analyze w-100 py-3" id="btnSubmitQR">
+                                        <i class="bi bi-shield-shaded me-2"></i> QR 피싱 정밀 분석 시작
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Direct URL Tab -->
+                        <div class="tab-pane fade" id="url-pane" role="tabpanel">
+                            <form method="POST" action="/" id="urlForm">
+                                <input type="hidden" name="analysis_mode" value="url">
+                                <div class="mb-3">
+                                    <label for="direct_url" class="form-label text-secondary fw-semibold">분석할 대상 URL 입력</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark border-secondary text-secondary">
+                                            <i class="bi bi-globe"></i>
+                                        </span>
+                                        <input type="text" class="form-control bg-dark text-light border-secondary py-2" id="direct_url" name="direct_url" placeholder="예: http://192.168.1.1/login 또는 https://example.com" required>
+                                    </div>
+                                    <div class="form-text text-secondary">
+                                        스캔이 어려운 상태이거나 추출된 URL을 직접 테스트할 때 유용합니다.
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-analyze w-100 py-3 mt-3">
+                                    <i class="bi bi-search me-2"></i> URL 위험도 즉시 분석
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Analysis Result Area -->
+            <div class="col-lg-6">
+                <div class="glass-card p-4 h-100">
+                    <h4 class="fw-bold mb-4 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-cpu text-info me-2"></i> 분석 결과 리포트</span>
+                        {% if result %}
+                            <span class="badge bg-secondary-subtle text-secondary small fw-normal">Scan Complete</span>
+                        {% endif %}
+                    </h4>
+
+                    {% if result %}
+                        {% if result.success %}
+                            <!-- Success Case: Decoded and Analyzed -->
+                            <div class="text-center py-3">
+                                <div class="mb-3">
+                                    {% if result.result == '피싱' %}
+                                        <span class="result-badge badge-danger">
+                                            <i class="bi bi-shield-x"></i> 위험 (피싱 의심)
+                                        </span>
+                                    {% elif result.result == '주의' %}
+                                        <span class="result-badge badge-warn">
+                                            <i class="bi bi-shield-exclamation"></i> 주의 (의심 패턴 감지)
+                                        </span>
+                                    {% else %}
+                                        <span class="result-badge badge-safe">
+                                            <i class="bi bi-shield-check"></i> 안전 (정상 사이트)
+                                        </span>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Risk Score Gauge -->
+                                <div class="score-gauge 
+                                    {% if result.score >= 65 %}text-danger
+                                    {% elif result.score >= 35 %}text-warning
+                                    {% else %}text-success{% endif %}">
+                                    {{ result.score }}<span class="fs-4 text-secondary"> / 100</span>
+                                </div>
+                                <div class="text-secondary small mb-3">종합 피싱 위험도 지수</div>
+
+                                <!-- Progress Bar -->
+                                <div class="progress bg-dark mb-4" style="height: 10px;">
+                                    <div class="progress-bar 
+                                        {% if result.score >= 65 %}bg-danger
+                                        {% elif result.score >= 35 %}bg-warning
+                                        {% else %}bg-success{% endif %}" 
+                                        role="progressbar" 
+                                        style="width: {{ result.score }}%; transition: width 1s ease;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Extracted URL Box -->
+                            <div class="mb-4">
+                                <label class="text-secondary small fw-bold mb-1">
+                                    <i class="bi bi-link-45deg"></i> 감지된 대상 URL
+                                </label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="url-box flex-grow-1 text-truncate" id="targetUrlBox">
+                                        {{ result.url }}
+                                    </div>
+                                    <button class="btn btn-outline-secondary btn-sm" id="btnCopyUrl" title="URL 복사">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Metrics Dual Cards -->
+                            <div class="row g-2 mb-4">
+                                <div class="col-6">
+                                    <div class="metric-card text-center">
+                                        <div class="text-secondary small mb-1">보안 규칙 점수</div>
+                                        <div class="fs-4 fw-bold text-light">{{ result.rule_score }}점</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="metric-card text-center">
+                                        <div class="text-secondary small mb-1">ML 피싱 예측 확률</div>
+                                        <div class="fs-4 fw-bold text-info">
+                                            {% if result.ml_probability is not none %}
+                                                {{ (result.ml_probability * 100) | round(1) }}%
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Detection Details (Evidence List) -->
+                            <div>
+                                <label class="text-secondary small fw-bold mb-2">
+                                    <i class="bi bi-search"></i> 주요 탐지 근거 (Details)
+                                </label>
+                                {% for detail in result.details %}
+                                    <div class="detail-item 
+                                        {% if result.result == '피싱' %}danger-detail
+                                        {% elif result.result == '주의' %}
+                                        {% else %}safe-detail{% endif %}">
+                                        <i class="bi 
+                                            {% if result.result == '피싱' %}bi-exclamation-triangle-fill text-danger
+                                            {% elif result.result == '주의' %}bi-exclamation-circle-fill text-warning
+                                            {% else %}bi-check-circle-fill text-success{% endif %} me-2"></i>
+                                        {{ detail }}
+                                    </div>
+                                {% endfor %}
+                            </div>
+
+                        {% else %}
+                            <!-- Fail Case (QR Decode Failure) -->
+                            <div class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="bi bi-x-circle-fill text-danger" style="font-size: 3.5rem;"></i>
+                                </div>
+                                <h5 class="fw-bold text-danger">{{ result.result or '인식 실패' }}</h5>
+                                <p class="text-secondary mb-4">{{ result.error_message or '유효한 QR 코드를 감지할 수 없습니다.' }}</p>
+                                <div class="text-start">
+                                    {% for d in result.details %}
+                                        <div class="detail-item danger-detail">
+                                            <i class="bi bi-info-circle me-2"></i> {{ d }}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+
+                    {% else %}
+                        <!-- Initial Placeholder -->
+                        <div class="text-center py-5 my-4">
+                            <i class="bi bi-shield-lock text-secondary opacity-50" style="font-size: 4rem;"></i>
+                            <h5 class="text-secondary fw-semibold mt-3">분석 결과 대기 중</h5>
+                            <p class="text-muted small mx-auto" style="max-width: 350px;">
+                                좌측에서 QR 코드 이미지를 업로드하거나 URL을 직접 입력해 분석을 시작하세요.
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <div class="glass-card p-4 mt-5">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <h5 class="fw-bold mb-0">
+                    <i class="bi bi-clock-history text-primary me-2"></i> 최근 검사 이력 (Recent Scans)
+                </h5>
+                {% if recent_scans %}
+                    <form method="POST" action="/api/clear-history" onsubmit="return confirm('검사 이력을 모두 삭제하시겠습니까?');">
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-trash3 me-1"></i> 이력 초기화
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+
+            {% if recent_scans %}
+                <div class="table-responsive">
+                    <table class="table table-dark-custom align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px;">ID</th>
+                                <th style="width: 170px;">검사 시각</th>
+                                <th>대상 URL</th>
+                                <th style="width: 110px;">판정</th>
+                                <th style="width: 100px;">위험도</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for scan in recent_scans %}
+                                <tr>
+                                    <td class="text-secondary">#{{ scan.id }}</td>
+                                    <td class="text-secondary small">{{ scan.timestamp }}</td>
+                                    <td>
+                                        <span class="text-truncate d-inline-block font-monospace" style="max-width: 450px;">
+                                            {{ scan.input_url }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if scan.result == '피싱' %}
+                                            <span class="badge bg-danger">피싱</span>
+                                        {% elif scan.result == '주의' %}
+                                            <span class="badge bg-warning text-dark">주의</span>
+                                        {% else %}
+                                            <span class="badge bg-success">정상</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="fw-bold 
+                                            {% if scan.score >= 65 %}text-danger
+                                            {% elif scan.score >= 35 %}text-warning
+                                            {% else %}text-success{% endif %}">
+                                            {{ scan.score }}점
+                                        </span>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4 text-secondary">
+                    <i class="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
+                    저장된 최근 검사 이력이 없습니다.
+                </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container text-center">
+            <p class="mb-1">QR Phishing Detector & URL Risk Analysis System</p>
+            <p class="text-muted small mb-0">캡스톤디자인 2 | OpenCV + Scikit-Learn + SQLite + Flask</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // 드래그 앤 드롭 및 이미지 미리보기 인터랙션
+        const dropzone = document.getElementById('dropzone');
+        const qrFileInput = document.getElementById('qrFileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewImage = document.getElementById('previewImage');
+        const btnRemoveImage = document.getElementById('btnRemoveImage');
+        const dropzoneIcon = dropzone.querySelector('.dropzone-icon');
+        const dropzoneTitle = dropzone.querySelector('h5');
+        const dropzoneSubtitle = dropzone.querySelector('p');
+
+        dropzone.addEventListener('click', (e) => {
+            if (e.target !== btnRemoveImage && !btnRemoveImage.contains(e.target)) {
+                qrFileInput.click();
+            }
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.remove('dragover');
+            });
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                qrFileInput.files = files;
+                showPreview(files[0]);
+            }
+        });
+
+        qrFileInput.addEventListener('change', () => {
+            if (qrFileInput.files.length > 0) {
+                showPreview(qrFileInput.files[0]);
+            }
+        });
+
+        function showPreview(file) {
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewImage.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                    dropzoneIcon.style.display = 'none';
+                    dropzoneTitle.textContent = file.name;
+                    dropzoneSubtitle.textContent = (file.size / 1024).toFixed(1) + ' KB';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        btnRemoveImage.addEventListener('click', (e) => {
+            e.stopPropagation();
+            qrFileInput.value = '';
+            previewContainer.style.display = 'none';
+            dropzoneIcon.style.display = 'inline-block';
+            dropzoneTitle.textContent = 'QR 이미지를 드래그하거나 클릭하여 업로드';
+            dropzoneSubtitle.textContent = '지원 형식: PNG, JPG, JPEG, WEBP, BMP (최대 16MB)';
+        });
+
+        // URL 복사 버튼 인터랙션
+        const btnCopyUrl = document.getElementById('btnCopyUrl');
+        const targetUrlBox = document.getElementById('targetUrlBox');
+        if (btnCopyUrl && targetUrlBox) {
+            btnCopyUrl.addEventListener('click', () => {
+                const text = targetUrlBox.textContent.trim();
+                navigator.clipboard.writeText(text).then(() => {
+                    btnCopyUrl.innerHTML = '<i class="bi bi-check2 text-success"></i>';
+                    setTimeout(() => {
+                        btnCopyUrl.innerHTML = '<i class="bi bi-clipboard"></i>';
+                    }, 2000);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
